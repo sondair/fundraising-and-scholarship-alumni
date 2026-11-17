@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login...</title>
+  <style>
+    body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f5f7ff;flex-direction:column;gap:16px}
+    .spinner{width:44px;height:44px;border:3px solid #e3f0ff;border-top-color:#0d47a1;border-radius:50%;animation:spin .7s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    p{font-size:14px;color:#6b7280;font-weight:500}
+  </style>
+</head>
+<body>
+<div class="spinner"></div>
+<p>Memverifikasi akun...</p>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script>
+(async () => {
+  try {
+    // Ambil token dari URL hash
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const token = params.get('access_token');
+    if (!token) throw new Error('No token');
+
+    // Ambil profil Google
+    const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const profile = await profileRes.json();
+    if (!profile.email) throw new Error('No profile');
+
+    // Baca niat user: 'daftar' (sign up) atau 'masuk' (sign in), disimpan dari index.html
+    const intent = sessionStorage.getItem('auth_intent') || 'masuk';
+    sessionStorage.removeItem('auth_intent');
+    const action = intent === 'daftar' ? 'daftarDonatur' : 'masukDonatur';
+
+    const resData = await apiPost({
+      action,
+      email: profile.email,
+      nama: profile.name,
+      foto: profile.picture,
+    });
+
+    if (resData.status !== 'ok') {
+      // Gagal: email sudah terdaftar (saat daftar) atau belum terdaftar (saat masuk)
+      const code = resData.code || 'ERROR';
+      window.location.href = 'index.html?error=' + encodeURIComponent(code);
+      return;
+    }
+
+    // Simpan session
+    saveSession({
+      email: profile.email,
+      name: profile.name,
+      picture: profile.picture,
+      role: resData.role || 'user',
+    });
+
+    const tujuan = resData.role === 'admin' ? 'pages/admin.html' : 'pages/user.html';
+
+    if (intent === 'daftar') {
+      // Akun baru: kasih pesan singkat dulu sebelum redirect
+      document.querySelector('p').textContent = 'Akun berhasil dibuat, selamat datang!';
+      setTimeout(() => { window.location.href = tujuan; }, 1200);
+    } else {
+      window.location.href = tujuan;
+    }
+  } catch (e) {
+    window.location.href = 'index.html';
+  }
+})();
+</script>
+</body>
+</html>
